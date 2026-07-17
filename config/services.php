@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'chat_model' => env('GEMINI_CHAT_MODEL', 'gemini-flash-latest'),
+    ],
+
 ];
