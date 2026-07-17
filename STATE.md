@@ -4,7 +4,7 @@
 > Rolling: simpan 10 entri terakhir, sisanya arsip di bawah garis `--- ARSIP ---`.
 
 ## Milestone aktif
-**M1 — RAG minimal** (belum mulai)
+**M2 — Produksi-grade dasar** (belum mulai)
 
 ## Success criteria (dari PRD, yang harus bisa diverifikasi sendiri)
 - [ ] Lumen menjawab dari isi dokumen upload (bukti: fakta unik).
@@ -23,6 +23,15 @@
   - Model Gemini pakai alias `gemini-flash-latest`, bukan nama versi spesifik — beberapa versi (`gemini-2.5-flash`) sudah "no longer available to new users" meski masih muncul di list model.
   - Mesin ini punya 2 Postgres: EDB installer PG17 (port 5432, custom build path, tidak bisa dipasangi pgvector) dan Homebrew PG17 (port 5433, dipakai Lumen). Jangan bingung kalau `psql` default connect ke yang salah.
   - Homebrew Postgres pakai `trust` auth untuk koneksi lokal by default — tidak perlu password untuk `DB_USERNAME` di `.env`.
+- **Parkir (godaan di luar scope):** —
+
+### 2026-07-18 — M1: RAG minimal
+- **Passed:** Upload dokumen (`POST /api/documents`) → ekstrak teks → chunk (1000 char, overlap 200) → embed (Gemini `gemini-embedding-001`, 768 dim) → simpan di pgvector. `POST /api/ask` retrieve top-3 chunk termirip (cosine distance) → prompt → jawaban + sumber chunk yang dipakai. Diverifikasi: upload dokumen berisi fakta unik (nama kode server, nama & ulang tahun maskot) → tanya → jawaban benar mengutip fakta tersebut. Pertanyaan di luar dokumen ("ibu kota Perancis?") dijawab "tidak tahu", bukan mengarang — prompt eksplisit larang menjawab di luar konteks.
+- **Failed / belum:** —
+- **Rule worth remembering:**
+  - Model embedding Gemini juga berganti: `text-embedding-004` sudah tidak tersedia (404), dipakai `gemini-embedding-001` dengan `outputDimensionality: 768` biar cocok sama kolom `vector(768)`. Selalu cek list model aktif dulu (`GET /v1beta/models`) sebelum hardcode nama model Gemini — penamaan model mereka sering berubah.
+  - `pgvector/pgvector-php` dipakai untuk kolom `vector` di migration (`$table->vector('embedding', 768)`) dan query nearest-neighbor (`HasNeighbors` trait + `Distance::Cosine`) — menghindari raw SQL manual untuk cosine similarity.
+  - Retrieval saat ini tidak ada threshold similarity minimum — kalau database cuma punya 1 dokumen yang tidak relevan, chunk itu tetap keambil sebagai "top-3" meski similarity-nya rendah. Prompt yang melarang mengarang jadi pengaman utama untuk saat ini; threshold/relevance check baru relevan dibahas di M3 (eval).
 - **Parkir (godaan di luar scope):** —
 
 <!--
