@@ -4,7 +4,7 @@
 > Rolling: simpan 10 entri terakhir, sisanya arsip di bawah garis `--- ARSIP ---`.
 
 ## Milestone aktif
-**M2 — Produksi-grade dasar** (belum mulai)
+**M3 — Evaluasi** (belum mulai)
 
 ## Success criteria (dari PRD, yang harus bisa diverifikasi sendiri)
 - [ ] Lumen menjawab dari isi dokumen upload (bukti: fakta unik).
@@ -33,6 +33,21 @@
   - `pgvector/pgvector-php` dipakai untuk kolom `vector` di migration (`$table->vector('embedding', 768)`) dan query nearest-neighbor (`HasNeighbors` trait + `Distance::Cosine`) — menghindari raw SQL manual untuk cosine similarity.
   - Retrieval saat ini tidak ada threshold similarity minimum — kalau database cuma punya 1 dokumen yang tidak relevan, chunk itu tetap keambil sebagai "top-3" meski similarity-nya rendah. Prompt yang melarang mengarang jadi pengaman utama untuk saat ini; threshold/relevance check baru relevan dibahas di M3 (eval).
 - **Parkir (godaan di luar scope):** —
+
+### 2026-07-18 — M2: Produksi-grade dasar
+- **Passed:**
+  - `POST /api/ask` sekarang async: bikin record `Ask` (status pending), lempar `AskJob` ke queue (driver `database`), balikin `ask_id` (202) langsung — bukan nunggu LLM.
+  - `AskJob` retry otomatis 3x dengan backoff 5s/15s/30s kalau panggilan LLM gagal (network error, rate limit, dll). Kalau tetap gagal setelah 3x, `Ask` masuk status `failed` dengan pesan ramah — bukan expose error mentah.
+  - `GET /api/ask/{askId}/stream` — endpoint SSE yang polling status `Ask` tiap 0.5 detik server-side, kirim event `status` (pending/processing) lalu event `done` (jawaban+sumber) atau `error`. Ada timeout 60 detik biar tidak nge-hang selamanya kalau worker mati.
+  - Error handling diverifikasi manual: dokumen kosong/whitespace → pesan jelas (bukan 500). `ask_id` tidak ada → event SSE `error` yang rapi (bukan stack trace — ini sempat bocor di percobaan pertama, sudah diperbaiki dengan ganti route-model-binding jadi manual lookup). API key rusak → 3x retry dengan backoff terverifikasi jalan → `failed` dengan pesan ramah.
+- **Failed / belum:** —
+- **Rule worth remembering:**
+  - Queue job + SSE tidak otomatis nyambung: job jalan async di background, SSE cuma "menonton" status record di DB lewat polling — bukan streaming token asli dari LLM. Trade-off yang disadari, bukan keterbatasan yang kelewatan.
+  - **Butuh `php artisan queue:work` jalan terus** biar job kepr proses — kalau lupa nyalain worker, `Ask` bakal stuck di `pending` selamanya. Penting diinget pas testing manual dan nanti pas deploy (M4) — perlu proses worker terpisah dari web server (misal via Supervisor/systemd, atau Laravel Horizon kalau upgrade ke Redis nanti).
+  - Route model binding (`Route::get('/ask/{ask}/stream', ...)` dengan `Ask $ask` di controller) otomatis lempar 404 exception mentah kalau record tidak ketemu — untuk endpoint yang responsnya harus konsisten satu format (di sini: SSE event-stream), lookup manual (`Ask::find()`) lebih aman daripada implicit binding.
+- **Parkir (godaan di luar scope):**
+  - Streaming token asli (real per-token dari Gemini) — didiskusikan tapi sengaja tidak dikerjakan, ditunda kalau UX-nya beneran dibutuhkan nanti.
+  - Redis untuk queue — didiskusikan tapi tetap pakai `database` driver biar deploy (M4) lebih simpel.
 
 <!--
 Template entri berikutnya (copy saat mulai milestone baru):
